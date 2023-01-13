@@ -75,9 +75,10 @@ app = typer.Typer(
 def size (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
     old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
+    diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their size
-    compare_directories(files[0], files[1], "size", old)
+    compare_directories(files[0], files[1], "size", old, diff)
 
 
 #
@@ -86,9 +87,11 @@ def size (
 @app.command()
 def ctime (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
+    old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
+    diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their creation time
-    compare_directories(files[0], files[1], "ctime")
+    compare_directories(files[0], files[1], "ctime", old, diff)
 
 
 #
@@ -97,9 +100,11 @@ def ctime (
 @app.command()
 def mtime (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
+    old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
+    diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their modification time
-    compare_directories(files[0], files[1], "mtime")
+    compare_directories(files[0], files[1], "mtime", old, diff)
 
 
 #
@@ -108,9 +113,11 @@ def mtime (
 @app.command()
 def atime (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
+    old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
+    diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their last access time
-    compare_directories(files[0], files[1], "atime")
+    compare_directories(files[0], files[1], "atime", old, diff)
 
 
 
@@ -201,7 +208,7 @@ def parse_directory_old(path, files, what = "size"):
 
 
 # compare_directories function is used to compare the two directories
-def compare_directories(path1, path2, what="size", old=False):
+def compare_directories(path1, path2, what="size", old=False, diff=False):
     global total_files
     files1 = {} # dictionary to hold the files in the first directory
     files2 = {} # dictionary to hold the files in the second directory
@@ -240,14 +247,18 @@ def compare_directories(path1, path2, what="size", old=False):
 
     table.add_column(f"{header} 1", justify="right") # column for the attribute value in the first directory
     table.add_column(f"{header} 2", justify="right") # column for the attribute value in the second directory
-    table.add_column("Compare", justify="left") # column for the comparison of the attribute values
+    if diff:
+        table.add_column("Compare", justify="left") # column for the comparison of the attribute values
 
     for file_path, attribute1 in files1.items():
         if file_path in files2:
             attribute2 = files2[file_path]
             if attribute1 != attribute2:
                 # add a row to the table for each different file
-                table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}", f"diff \"{path1}{file_path}\" \"{path2}{file_path}\"")
+                if diff:
+                    table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}", f"diff \"{path1}{file_path}\" \"{path2}{file_path}\"")
+                else:
+                    table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}")
     rich.print(table)
 
     # create a table to hold the statistics
