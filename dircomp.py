@@ -211,11 +211,11 @@ def compare_directories(path1, path2, what="size", old=False):
     count2 =  0 # variable to hold the number of files in the second directory
 
     if(old): 
-        execution_time = timeit.timeit(lambda: (
-            parse_directory_old(path1, files1, what), # parse the first directory
-            parse_directory_old(path2, files2, what)  # parse the second directory
-        ), number = 1)
-        print(f"Execution Time: {execution_time} seconds")
+        time1 = timeit.timeit(lambda: parse_directory(path1, files1, what), number = 1)
+        count1 = total_files
+
+        time2 = timeit.timeit(lambda: parse_directory(path2, files2, what), number = 1)
+        count2 = total_files - count1
     else:
         time1 = timeit.timeit(lambda: parse_directory(path1, path1, files1, what), number = 1)
         count1 = total_files
