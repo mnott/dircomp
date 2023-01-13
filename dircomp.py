@@ -266,8 +266,8 @@ def compare_directories(path1, path2, what="size", old=False, diff=False):
     table.add_column("Label", justify="left")
     table.add_column("Execution Time", justify="right")
     table.add_column("Number of Files", justify="right")
-    table.add_row(f"Path: {path1}", "{:.6f} seconds".format(time1), "{} files".format(count1))
-    table.add_row(f"Path: {path2}", "{:.6f} seconds".format(time2), "{} files".format(count2))
+    table.add_row(f"Location 1: {path1}", "{:.6f} seconds".format(time1), "{} files".format(count1))
+    table.add_row(f"Location 2: {path2}", "{:.6f} seconds".format(time2), "{} files".format(count2))
     table.add_row(f"Total: ",       "{:.6f} seconds".format(time1+time2), "{} files".format(count2+count1))
     rich.print(table)
 
