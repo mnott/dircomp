@@ -31,10 +31,14 @@ from datetime import datetime # used to convert file time stamps
 #
 # More Beautiful Tracebacks and Pretty Printing
 #
+import pydoc
+from io import StringIO
 from rich import print;
 from rich import traceback;
 from rich import pretty;
+from rich.progress import Progress
 import rich.table # used to print a table
+from rich.console import Console
 pretty.install()
 traceback.install()
 
@@ -43,6 +47,7 @@ traceback.install()
 # We hold it global because of the timeit.timeit() function
 #
 total_files = 0
+differences = 0
 
 
 #
@@ -74,11 +79,10 @@ app = typer.Typer(
 @app.command()
 def size (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
-    old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
     diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their size
-    compare_directories(files[0], files[1], "size", old, diff)
+    compare_directories(files[0], files[1], "size", diff)
 
 
 #
@@ -87,11 +91,10 @@ def size (
 @app.command()
 def ctime (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
-    old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
     diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their creation time
-    compare_directories(files[0], files[1], "ctime", old, diff)
+    compare_directories(files[0], files[1], "ctime", diff)
 
 
 #
@@ -100,11 +103,10 @@ def ctime (
 @app.command()
 def mtime (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
-    old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
     diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their modification time
-    compare_directories(files[0], files[1], "mtime", old, diff)
+    compare_directories(files[0], files[1], "mtime", diff)
 
 
 #
@@ -113,11 +115,10 @@ def mtime (
 @app.command()
 def atime (
     files: Optional[List[str]] = typer.Argument(None, help="The files to process"),
-    old:   bool = typer.Option(False, "--old", "-o", help="Use the older os.walk() function to parse the directories"),
     diff:  bool = typer.Option(False, "--diff", "-d", help="Whether to show a diff command"),
 ):
     # call the compare_directories function to compare the two directories based on their last access time
-    compare_directories(files[0], files[1], "atime", old, diff)
+    compare_directories(files[0], files[1], "atime", diff)
 
 
 
@@ -162,54 +163,60 @@ def doc (
 
 
 #
-# Main function
+# Count the number of files in a directory tree.
 #
-def parse_directory(path: str, original_path: str, files: dict, attribute: str = "size"):
-    global total_files
-
-    for entry in os.scandir(path):
+def count_files(directory):
+    count = 0
+    for entry in os.scandir(directory):
         if entry.is_file():
-            total_files += 1
-            file_path = os.path.join(entry.path)
-            file_sub_path = remove_prefix(file_path, original_path)
-            if attribute == "size":
-                files[file_sub_path] = get_size(file_path)
-            elif attribute == "ctime":
-                files[file_sub_path] = convert_time(os.path.getctime(file_path))
-            elif attribute == "mtime":
-                files[file_sub_path] = convert_time(os.path.getmtime(file_path))
-            elif attribute == "atime":
-                files[file_sub_path] = convert_time(os.path.getatime(file_path))
+            count += 1
         elif entry.is_dir():
             if not os.path.islink(entry.path):
-                parse_directory(entry.path, original_path, files, attribute)
+                count += count_files(entry.path)
+    return count
+
+#
+# Compare two directories
+#
+# Not using a recursive function to parse the directories because we want to
+# display a progress bar while the directories are being parsed.
+#
+def parse_directory(path, files, attribute):
+    global total_files
+    expected_files = count_files(path)
+
+    with Progress() as progress:
+        task = progress.add_task(f"Parsing {path}", total=expected_files)
+        seen_files = 0
+        stack = [path]
+        while stack:
+            current_path = stack.pop()
+            for entry in os.scandir(current_path):
+                if entry.is_file():
+                    total_files += 1
+                    seen_files += 1
+                    progress.update(task, advance=1)
+                    file_path = os.path.join(entry.path)
+                    file_sub_path = remove_prefix(file_path, path)
+                    if attribute == "size":
+                        files[file_sub_path] = get_size(file_path)
+                    elif attribute == "ctime":
+                        files[file_sub_path] = convert_time(os.path.getctime(file_path))
+                    elif attribute == "mtime":
+                        files[file_sub_path] = convert_time(os.path.getmtime(file_path))
+                    elif attribute == "atime":
+                        files[file_sub_path] = convert_time(os.path.getatime(file_path))
+                elif entry.is_dir():
+                    if not os.path.islink(entry.path):
+                        stack.append(entry.path)
 
 
 #
-# Older Main function
+# Compare_directories function is used to compare the two directories.
 #
-def parse_directory_old(path, files, what = "size"):
-    global total_files
-    
-    for dirpath, dirnames, filenames in os.walk(path):
-        for filename in filenames:
-            if os.path.isfile(os.path.join(dirpath, filename)):
-                total_files += 1
-                file_path = os.path.join(dirpath, filename)
-                file_sub_path = remove_prefix(file_path, path)
-                if what == "size":
-                    files[file_sub_path] = get_size(file_path)
-                elif what == "ctime":
-                    files[file_sub_path] = convert_time(os.path.getctime(file_path))
-                elif what == "mtime":
-                    files[file_sub_path] = convert_time(os.path.getmtime(file_path))
-                elif what == "atime":
-                    files[file_sub_path] = convert_time(os.path.getatime(file_path))
+def compare_directories(path1, path2, what="size", diff=False):
+    global total_files, differences
 
-
-# compare_directories function is used to compare the two directories
-def compare_directories(path1, path2, what="size", old=False, diff=False):
-    global total_files
     files1 = {} # dictionary to hold the files in the first directory
     files2 = {} # dictionary to hold the files in the second directory
     time1  =  0 # variable to hold the time taken to parse the first directory
@@ -217,22 +224,14 @@ def compare_directories(path1, path2, what="size", old=False, diff=False):
     count1 =  0 # variable to hold the number of files in the first directory
     count2 =  0 # variable to hold the number of files in the second directory
 
-    if(old): 
-        time1 = timeit.timeit(lambda: parse_directory_old(path1, files1, what), number = 1)
-        count1 = total_files
+    time1 = timeit.timeit(lambda: parse_directory(path1, files1, what), number = 1)
+    count1 = total_files
 
-        time2 = timeit.timeit(lambda: parse_directory_old(path2, files2, what), number = 1)
-        count2 = total_files - count1
-    else:
-        time1 = timeit.timeit(lambda: parse_directory(path1, path1, files1, what), number = 1)
-        count1 = total_files
-
-        time2 = timeit.timeit(lambda: parse_directory(path2, path2, files2, what), number = 1)
-        count2 = total_files - count1
+    time2 = timeit.timeit(lambda: parse_directory(path2, files2, what), number = 1)
+    count2 = total_files - count1
 
     # create a table to hold the comparison results
     table = rich.table.Table()
-    table.title = "Different Files"
     table.add_column("Location 1", justify="left") # column for the file path in the first directory
     table.add_column("Location 2", justify="left") # column for the file path in the second directory
 
@@ -254,22 +253,43 @@ def compare_directories(path1, path2, what="size", old=False, diff=False):
         if file_path in files2:
             attribute2 = files2[file_path]
             if attribute1 != attribute2:
+                differences += 1
                 # add a row to the table for each different file
                 if diff:
                     table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}", f"diff \"{path1}{file_path}\" \"{path2}{file_path}\"")
                 else:
                     table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}")
-    rich.print(table)
+
+    # add a header to the table
+    if differences == 1:
+        table.title = f"[red]{differences}[/red] [green]Different File:[/green]"
+    else:
+        table.title = f"[red]{differences}[/red] [green]Different Files:[/green]"
+
+    # get the number of rows in the terminal
+    rows, columns = os.popen('stty size', 'r').read().split()
+
+    # if the number of files is greater than the number of rows in the terminal (accounting for the header and footer)
+    # then use the pager to display the results
+    if differences> 0:
+        if differences > int(rows)-5: 
+            console = Console(file=StringIO())
+            console.print(table)
+            pydoc.pager(console.file.getvalue())
+            console.file.close()
+        else:
+            rich.print(table)
 
     # create a table to hold the statistics
-    table = rich.table.Table(show_header=False, show_edge=False)
-    table.add_column("Label", justify="left")
-    table.add_column("Execution Time", justify="right")
-    table.add_column("Number of Files", justify="right")
-    table.add_row(f"Location 1: {path1}", "{:.6f} seconds".format(time1), "{} files".format(count1))
-    table.add_row(f"Location 2: {path2}", "{:.6f} seconds".format(time2), "{} files".format(count2))
-    table.add_row(f"Total: ",       "{:.6f} seconds".format(time1+time2), "{} files".format(count2+count1))
-    rich.print(table)
+    table_stats = rich.table.Table(show_header=False, show_edge=False, padding=0)
+    table_stats.add_column("Label", justify="left")
+    table_stats.add_column("Execution Time", justify="right")
+    table_stats.add_column("Number of Files", justify="right")
+    table_stats.add_row(f"Location 1: {path1}", "{:.6f} seconds".format(time1), "{} files".format(count1))
+    table_stats.add_row(f"Location 2: {path2}", "{:.6f} seconds".format(time2), "{} files".format(count2))
+    table_stats.add_row(f"Total: ",       "{:.6f} seconds".format(time1+time2), "{} files".format(count2+count1))
+    rich.print(table_stats)
+
 
 
 
