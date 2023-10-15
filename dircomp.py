@@ -259,6 +259,13 @@ def compare_directories(path1, path2, what="size", diff=False):
                     table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}", f"diff \"{path1}{file_path}\" \"{path2}{file_path}\"")
                 else:
                     table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}")
+        else:
+            table.add_row(f"{path1}{file_path}", "MISSING", f"{attribute1}", "")
+
+    # Check files that are missing in Location 1
+    for file_path, attribute2 in files2.items():
+        if file_path not in files1:
+            table.add_row("MISSING", f"{path2}{file_path}", "", f"{attribute2}")
 
     # add a header to the table
     if differences == 1:
@@ -272,7 +279,7 @@ def compare_directories(path1, path2, what="size", diff=False):
     # if the number of files is greater than the number of rows in the terminal (accounting for the header and footer)
     # then use the pager to display the results
     if differences> 0:
-        if differences > int(rows)-5: 
+        if differences > int(rows)-5:
             console = Console(file=StringIO())
             console.print(table)
             pydoc.pager(console.file.getvalue())
