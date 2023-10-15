@@ -267,6 +267,7 @@ def compare_directories(path1, path2, what="size", diff=False):
     # Loop through files in Location 2 and check if they're missing in Location 1
     for file_path in files2:
         if file_path not in files1:
+            differences += 1
             table.add_row("MISSING", f"{path2}{file_path}", "", files2[file_path])
 
     # Add header to the table
