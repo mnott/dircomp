@@ -211,10 +211,88 @@ def parse_directory(path, files, attribute):
                         stack.append(entry.path)
 
 
+def compare_directories(path1, path2, what="size", diff=False):
+    global total_files, differences
+
+    files1 = {}  # dictionary to hold the files in the first directory
+    files2 = {}  # dictionary to hold the files in the second directory
+
+    time1 = timeit.timeit(lambda: parse_directory(path1, files1, what), number=1)
+    count1 = total_files
+
+    time2 = timeit.timeit(lambda: parse_directory(path2, files2, what), number=1)
+    count2 = total_files - count1
+
+    # Create table for comparison results
+    table = rich.table.Table()
+    table.add_column("Location 1", justify="left")
+    table.add_column("Location 2", justify="left")
+    headers = {
+        "size": "Size",
+        "ctime": "Created",
+        "mtime": "Modified",
+        "atime": "Accessed"
+    }
+    header = headers.get(what, "")
+    table.add_column(f"{header} 1", justify="right")
+    table.add_column(f"{header} 2", justify="right")
+    if diff:
+        table.add_column("Compare", justify="left")
+
+    # Loop through files in Location 1
+    for file_path, attribute1 in files1.items():
+        if file_path in files2:
+            attribute2 = files2[file_path]
+            if attribute1 != attribute2:
+                differences += 1
+                # Add a row to the table for each different file
+                if diff:
+                    table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}", f"diff \"{path1}{file_path}\" \"{path2}{file_path}\"")
+                else:
+                    table.add_row(f"{path1}{file_path}", f"{path2}{file_path}", f"{attribute1}", f"{attribute2}")
+        else:
+            table.add_row(f"{path1}{file_path}", "MISSING", f"{attribute1}", "")
+
+    # Loop through files in Location 2 and check if they're missing in Location 1
+    for file_path in files2:
+        if file_path not in files1:
+            table.add_row("MISSING", f"{path2}{file_path}", "", files2[file_path])
+
+
+    # Add header to the table
+    if differences == 1:
+        table.title = f"[red]{differences}[/red] [green]Different File:[/green]"
+    else:
+        table.title = f"[red]{differences}[/red] [green]Different Files:[/green]"
+
+    # Get the number of rows in the terminal
+    rows, columns = os.popen('stty size', 'r').read().split()
+
+    # Display results
+    if differences > 0:
+        if differences > int(rows)-5:
+            console = Console(file=StringIO())
+            console.print(table)
+            pydoc.pager(console.file.getvalue())
+            console.file.close()
+        else:
+            rich.print(table)
+
+    # Display statistics
+    table_stats = rich.table.Table(show_header=False, show_edge=False, padding=0)
+    table_stats.add_column("Label", justify="left")
+    table_stats.add_column("Execution Time", justify="right")
+    table_stats.add_column("Number of Files", justify="right")
+    table_stats.add_row(f"Location 1: {path1}", "{:.6f} seconds".format(time1), "{} files".format(count1))
+    table_stats.add_row(f"Location 2: {path2}", "{:.6f} seconds".format(time2), "{} files".format(count2))
+    table_stats.add_row(f"Total: ",       "{:.6f} seconds".format(time1+time2), "{} files".format(count2+count1))
+    rich.print(table_stats)
+
+
 #
 # Compare_directories function is used to compare the two directories.
 #
-def compare_directories(path1, path2, what="size", diff=False):
+def compare_directories2(path1, path2, what="size", diff=False):
     global total_files, differences
 
     files1 = {} # dictionary to hold the files in the first directory
