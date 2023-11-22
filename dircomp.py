@@ -25,8 +25,9 @@ This will compare both directory tries based on their files' sizes.
 import os # used to interact with the file system
 import sys # used to debug the script
 import timeit # to time options
+import shutil
 from datetime import datetime # used to convert file time stamps
-
+from pathlib import Path
 
 #
 # More Beautiful Tracebacks and Pretty Printing
@@ -119,6 +120,23 @@ def atime (
 ):
     # call the compare_directories function to compare the two directories based on their last access time
     compare_directories(files[0], files[1], "atime", diff)
+
+#
+# Sync
+#
+@app.command()
+def sync (
+    source: str      = typer.Argument(..., help="Source Directory"),
+    target: str      = typer.Argument(..., help="Target Directory"),
+    dry_run: bool    = typer.Option  (True,  "-d", "--dry_run",   help="Dry Run"),
+    overwrite: bool  = typer.Option  (False, "-o", "--overwrite", help="Overwrite Target Files"),
+    delete: bool     = typer.Option  (False, "-D", "--delete",    help="Delete Source Files"),
+) -> None:
+    if dry_run:
+        typer.echo("Dry run enabled.")
+    merge_directories(source, target, overwrite, delete, dry_run)
+    if not dry_run:
+        typer.echo(f"Merge completed: '{source}' into '{target}' (overwrite: {overwrite}, delete source: {delete}).")
 
 
 
@@ -298,6 +316,74 @@ def compare_directories(path1, path2, what="size", diff=False):
     table_stats.add_row(f"Location 2: {path2}", "{:.6f} seconds".format(time2), "{} files".format(count2))
     table_stats.add_row(f"Total: ",       "{:.6f} seconds".format(time1+time2), "{} files".format(count2+count1))
     rich.print(table_stats)
+
+
+
+# 
+# Merge function
+#
+def merge_directories(source, target, overwrite, delete, dry_run):
+    source_path = Path(source)
+    target_path = Path(target)
+
+    # Check if source is a directory
+    if not source_path.is_dir():
+        raise ValueError(f"Source must be a directory: {source}")
+
+    # Check if target is a directory, if not, create it
+    if target_path.exists() and not target_path.is_dir():
+        raise ValueError(f"Target exists and is not a directory: {target}")
+    elif not target_path.exists():
+        if dry_run:
+            typer.echo(f"Dry run - would create target directory: {target_path}")
+        else:
+            target_path.mkdir(parents=True)
+
+    total_files = sum(1 for _ in source_path.rglob('*') if _.is_file())
+
+    with Progress() as progress:
+        task = progress.add_task("Merging files...", total=total_files)
+
+        for item in source_path.rglob('*'):
+            relative_path = item.relative_to(source_path)
+            target_item = target_path / relative_path
+
+            if item.is_dir():
+                # Handle directory
+                if not target_item.exists():
+                    action_msg = f"create directory: {target_item}"
+                    if dry_run:
+                        with progress:
+                            typer.echo(f"Dry run - would {action_msg}")
+                    else:
+                        target_item.mkdir(parents=True, exist_ok=True)
+            else:
+                # Handle file
+                if not target_item.exists() or overwrite:
+                    action = "overwrite" if target_item.exists() else "move"
+                    action_msg = f"{action}: {item} to {target_item}"
+                    if dry_run:
+                        with progress:
+                            print(f"Dry run - would {action_msg}")
+                    else:
+                        shutil.move(str(item), str(target_item))
+                elif dry_run:
+                    with progress:
+                        print(f"Dry run - would skip (already exists): {item} to {target_item}")
+
+                # Update progress for files only
+                progress.update(task, advance=1)
+                
+
+    if delete:
+        # Handle delete of empty subdirectories within the source
+        for sub_dir in sorted(source_path.rglob('*'), key=lambda x: -str(x.relative_to(source_path)).count(os.sep)):
+            if sub_dir.is_dir() and not any(sub_dir.iterdir()):
+                if dry_run:
+                    with progress:
+                        print(f"Dry run - would delete empty directory: {sub_dir}")
+                else:
+                    sub_dir.rmdir()
 
 
 
